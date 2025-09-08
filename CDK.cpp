@@ -488,13 +488,198 @@ namespace PlayStation2
             pattern.pop_back();
 
         // scan for free block of memory
-        const __int64 pBlock = Memory::PatternScanEx(pattern.c_str(), pMem, PS2MemSize::MainRam);
+        const __int64 pBlock = Memory::PatternScanEx(pattern.c_str(), pMem + (PS2MemSize::MainRam * .5), PS2MemSize::MainRam);
         if (!pBlock)
 			return 0;   // no block found
 
         // return virtual address
         return pBlock;
     }
+
+#pragma endregion
+
+
+    //----------------------------------------------------------------------------------------------------
+    //									PS2Hooking
+    //-----------------------------------------------------------------------------------
+
+#pragma region  //  PS2HOOKING
+
+    PS2Hooking::EPS2_DETOUR_STATUS PS2Hooking::Detour(const __int32& offset, const PS2Memory::opcode& sub, PS2Detour* outResult)
+    {
+        /* determine if valid */
+		if (offset <= 0 || offset >= PS2MemSize::TotalRam || sub.empty() || !outResult)
+			return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_INVALID;
+
+        /* define some constants */
+        const __int64 EEBase = PS2Memory::GetEEBase();
+		const __int64 targetAddress = PS2Memory::GetEEAddr(offset);
+
+        /* backup original bytes */
+        PS2Memory::opcode originalBytes;
+        for (int i = 0; i < 2; i++)
+            originalBytes.push_back(PS2Memory::ReadEE<__int32>(targetAddress + ( i * 4 )));
+
+        /* find suitable region for detour */
+		const __int64 detour_codeBlock = PS2Memory::FindExecCodeBlock(sub.size());
+		if (!detour_codeBlock)
+			return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_ALLOCATE_MEMORY; // no code block found
+
+        /* get the detour offset in ee mem */
+		const __int32 detour_codeBlockOffset = detour_codeBlock - EEBase;
+
+        /* write detour to empty code block */
+        if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)detour_codeBlock, sub.data(), sub.size(), nullptr))
+			return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_WRITE_MEMORY; // write failed
+
+        /* assemble opcode for jump to detour */
+		PS2ASM writer; // assembler instance
+		writer.J(detour_codeBlockOffset); // jump to detour
+		writer.NOP(); // padding
+		const auto jmpBytes = writer.data(); // get bytes
+
+        /* write jump to detour */
+		if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)targetAddress, jmpBytes, writer.size(), nullptr))
+			return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_WRITE_MEMORY; // write failed
+
+        /* fill result */
+        PS2Detour dInfo{};
+		dInfo.detourAddress = detour_codeBlock;               //  store detour address
+		dInfo.detourBytes = sub;                              //  store detour bytes
+        dInfo.detourSize = dInfo.detourBytes.size();          //  store detour size   
+		dInfo.originalAddress = targetAddress;			   //  store original address
+		dInfo.originalBytes = originalBytes;          //  store original bytes
+		dInfo.detourStatus = EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_SUCCESS; //  store status
+
+		*outResult = dInfo; // copy result to output
+
+		return dInfo.detourStatus;
+    }
+
+    PS2Hooking::EPS2_DETOUR_STATUS PS2Hooking::RestoreDetour(PS2Detour& detour)
+    {
+        /* verify executing address is not inside detour */
+
+        /* wait ??? */
+
+        /* pause process */
+
+        /* restore original bytes at target address */
+		if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)detour.originalAddress, detour.originalBytes.data(), detour.originalBytes.size(), nullptr))
+			return EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_RESTORE_MEMORY; // write failed
+        
+        /* resume process */
+
+        /* clear detour code block */
+		if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)detour.detourAddress, std::vector<BYTE>(detour.detourSize, 0).data(), detour.detourSize, nullptr))
+			return EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_RESTORE_MEMORY; // write failed
+
+        /* clear detour info */
+        detour = PS2Detour();
+
+        return EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_SUCCESS;
+    }
+
+    PS2Hooking::EPS2_DETOUR_STATUS PS2Hooking::DataSwap(const __int32& offset, const PS2Memory::opcode& sub, PS2Detour* outResult)
+    {
+        /* determine if valid */
+        if (offset <= 0 || offset >= PS2MemSize::TotalRam || sub.empty() || !outResult)
+            return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_INVALID;
+
+        /* define some constants & forward declare result */
+        const __int64 EEBase = PS2Memory::GetEEBase();
+        const __int64 targetAddress = PS2Memory::GetEEAddr(offset);
+        PS2Detour dInfo{};
+        dInfo.detourType = EPS2_DETOUR_TYPE::PS2_DETOUR_TYPE_DATA_SWAP; //  store detour type
+        dInfo.detourBytes = sub;                              //  store detour bytes
+        dInfo.detourSize = dInfo.detourBytes.size();          //  store detour size
+		dInfo.originalAddress = targetAddress;              //  store original address
+
+        /* backup original bytes */
+        PS2Memory::opcode originalBytes;
+        originalBytes.push_back(PS2Memory::ReadEE<__int32>(targetAddress));
+		dInfo.originalBytes = originalBytes;          //  store original bytes
+
+        /* find suitable region for detour */
+        const __int64 detour_codeBlock = PS2Memory::FindExecCodeBlock(sub.size());
+        if (!detour_codeBlock)
+            return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_ALLOCATE_MEMORY; // no code block found
+		dInfo.detourAddress = detour_codeBlock;               //  store detour address
+
+        /* get the detour offset in ee mem */
+        const __int32 detour_codeBlockOffset = detour_codeBlock - EEBase;
+
+        /* write detour to empty code block */
+        if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)detour_codeBlock, sub.data(), sub.size(), nullptr))
+            return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_WRITE_MEMORY; // write failed
+
+        /* write jump to detour */
+        if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)targetAddress, (LPVOID)detour_codeBlockOffset, sizeof(__int32), nullptr))
+			return PS2Hooking::EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_WRITE_MEMORY; // write failed
+
+		dInfo.detourStatus = EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_SUCCESS; //  store status
+
+		*outResult = dInfo; // copy result to output
+
+        return dInfo.detourStatus;
+    }
+
+    PS2Hooking::EPS2_DETOUR_STATUS PS2Hooking::RestoreDataSwap(PS2Detour& detour)
+    {
+		/* restore original pointer */
+		if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)detour.originalAddress, detour.originalBytes.data(), detour.originalBytes.size(), nullptr))
+			return EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_RESTORE_MEMORY; // write failed
+
+		/* clear detour code block */
+		if (!WriteProcessMemory(GetCurrentProcess(), (LPVOID)detour.detourAddress, std::vector<BYTE>(detour.detourSize, 0).data(), detour.detourSize, nullptr))
+			return EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_ERROR_CANT_RESTORE_MEMORY; // write failed
+
+		/* clear detour info */
+		detour = PS2Detour();
+
+        return EPS2_DETOUR_STATUS::PS2_DETOUR_STATUS_SUCCESS;
+    }
+
+#pragma endregion
+
+
+    //----------------------------------------------------------------------------------------------------
+    //									PS2ASM
+    //-----------------------------------------------------------------------------------
+
+#pragma region  //  PS2ASM
+
+    const unsigned __int32* PS2ASM::data() const { return code.data(); }
+	size_t PS2ASM::size() const { return code.size() * sizeof(unsigned __int32); }
+    
+    void PS2ASM::J(unsigned __int32 address)
+        { code.push_back((0x02 << 26) | ((address >> 2) & 0x03FFFFFF));  }
+    
+    void PS2ASM::JAL(unsigned __int32 address)
+        { code.push_back((0x03 << 26) | ((address >> 2) & 0x03FFFFFF)); }
+    
+    void PS2ASM::JR(EREGISTER rs)
+        { code.push_back((0x00 << 26) | (rs << 21) | (0 << 16) | (0 << 6) | 0x08);   }
+    
+    void PS2ASM::NOP()
+    { 
+        for (int i = 0; i < 4; i++) 
+            code.push_back(0x00); 
+    }
+
+    //  void ADDIU(EREGISTER rt, EREGISTER rs, unsigned __int16 immediate);		        //	Add Immediate Unsigned
+    //  void ORI(EREGISTER rt, EREGISTER rs, unsigned __int16 immediate);		        //	OR Immediate
+    //  void LUI(EREGISTER rt, unsigned __int16 immediate);						        //	Load Upper Immediate
+    //  void PS2ASM::SYSCALL(unsigned __int16 code);									//	System Call
+    //  void PS2ASM::BREAK(unsigned __int16 code);										//	Break
+    //  void PS2ASM::LI(EREGISTER rt, unsigned __int32 immediate);						//	Load Immediate
+    //  void PS2ASM::AND(EREGISTER rd, EREGISTER rs, EREGISTER rt);						//	AND
+    //  void PS2ASM::ANDI(EREGISTER rt, EREGISTER rs, unsigned __int16 immediate);		//	AND Immediate
+    //  void PS2ASM::OR(EREGISTER rd, EREGISTER rs, EREGISTER rt);						//	OR
+    //  void PS2ASM::BEQ(EREGISTER rs, EREGISTER rt, signed __int16 offset);			//	Branch on Equal
+    //  void PS2ASM::BNE(EREGISTER rs, EREGISTER rt, signed __int16 offset);			//	Branch on Not Equal
+    //  void PS2ASM::SW(EREGISTER rt, unsigned __int16 offset, EREGISTER base);			//	Store Word
+    //  void PS2ASM::LW(EREGISTER rt, unsigned __int16 offset, EREGISTER base);			//	Load Word
 
 #pragma endregion
 

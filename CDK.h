@@ -678,6 +678,9 @@ namespace PlayStation2
     class PS2Memory
     {
     public:
+		typedef std::vector<unsigned __int32> opcode;	// typedef for mips opcode byte array
+
+    public:
 
         /*
             Summary: takes an input long address and reads its value
@@ -764,6 +767,104 @@ namespace PlayStation2
 		static __int64					GetScratchAddr(__int32 offset);		//  transform scratchpad offset to virtual address. 0x1F00 -> 00007FF6C801F00
 		static __int64                  ResolvePtrChain(__int32 base_offset, std::vector<__int32> offsets); //  resolves a pointer chain to a final address
 		static __int64					FindExecCodeBlock(const DWORD& szDetour);	// Get executable space in EE memory ( finds the first space matching criteria , often not the best way of doing it )
+
+
+		friend class PS2Hooking; // allow access to private members from PS2Hooking class
+	};
+
+	class PS2Hooking
+	{
+	public:
+		enum EPS2_DETOUR_TYPE : __int8
+		{
+			PS2_DETOUR_TYPE_INVALID = -1,
+			PS2_DETOUR_TYPE_HOOK = 0,	//	jump to detour function and return back to original function
+			PS2_DETOUR_TYPE_DATA_SWAP,	//	replace a vtable entry with a call to the detour function
+			PS2_DETOUR_TYPE_MAX
+		};
+
+		enum EPS2_DETOUR_STATUS : unsigned __int8
+		{
+			PS2_DETOUR_STATUS_INVALID = -1,					//	
+			PS2_DETOUR_STATUS_FAILED = 0,					//	
+			PS2_DETOUR_STATUS_SUCCESS,						//	
+			PS2_DETOUR_STATUS_ERROR_NO_ADDRESS,				//	invalid address supplied
+			PS2_DETOUR_STATUS_ERROR_ALREADY_DETOURED,		//	already detoured this address
+			PS2_DETOUR_STATUS_ERROR_CANT_ALLOCATE_MEMORY,	//	short for not being able to find a suitable address for writing 
+			PS2_DETOUR_STATUS_ERROR_CANT_WRITE_MEMORY,		//	failed to write memory either the detour block itself or the jump to the detour
+			PS2_DETOUR_STATUS_ERROR_CANT_RESTORE_MEMORY,	//	failed to restore either original bytes or the detour block
+			PS2_DETOUR_STATUS_MAX							//	$
+		};
+
+	public:
+		struct PS2Detour
+		{
+			/* passed to hooking method */
+			PS2Memory::opcode	originalBytes;		//	original bytes
+			__int64				originalAddress;	//	address to jump back to after the detour
+			PS2Memory::opcode	detourBytes;		//	detour bytes
+
+			/* established via hook method */
+			__int64				detourAddress;		//	address of the detour function
+			size_t				detourSize;			//	size of the detour in bytes
+			EPS2_DETOUR_STATUS	detourStatus;		//	status of the detour
+			EPS2_DETOUR_TYPE	detourType;			//	type of detour
+		};
+
+		/* @TODO: basic hooking methods */
+		//	static bool Hook(const __int64& pAddr, const PS2Memory::opcode& sub, const EPS2_DETOUR_TYPE& type);
+		//	static bool Unhook(const __int64& pAddr);
+
+		static EPS2_DETOUR_STATUS		Detour(const __int32& offset, const PS2Memory::opcode& sub, PS2Detour* outResult); // Detours a function in EE memory and returns the detour information
+		static EPS2_DETOUR_STATUS		RestoreDetour(PS2Detour& detour); // Restores a previously made detour in EE memory   
+		static EPS2_DETOUR_STATUS	    DataSwap(const __int32& offset, const PS2Memory::opcode& sub, PS2Detour* outResult);// performs a pointer swap on a vtable entry , sub must contain call to original function
+		static EPS2_DETOUR_STATUS	    RestoreDataSwap(PS2Detour& detour); // restores a previously made pointer swap on a vtable entry
+
+	private:
+		std::vector<PS2Detour> m_detours; // array of detours
+	};
+
+	class PS2ASM
+	{
+	private:
+		std::vector<unsigned __int32> code;
+
+	public:
+		enum EREGISTER : unsigned __int8
+		{
+			ZERO = 0,
+			AT = 1,
+			V0 = 2, V1,
+			A0 = 4, A1, A2, A3,
+			T0 = 8, T1, T2, T3, T4, T5, T6, T7,
+			S0 = 16, S1, S2, S3, S4, S5, S6, S7,
+			T8 = 24, T9,
+			K0 = 26, K1,
+			GP = 28, SP, FP, RA
+		};
+
+	public:
+		void J(unsigned __int32 address);										//	Jump
+		void JAL(unsigned __int32 address);										//	Jump and Link
+		void JR(EREGISTER rs);													//	Jump Register
+		void NOP();																//	No Operation
+		void ADDIU(EREGISTER rt, EREGISTER rs, unsigned __int16 immediate);		//	Add Immediate Unsigned
+		void ORI(EREGISTER rt, EREGISTER rs, unsigned __int16 immediate);		//	OR Immediate
+		void LUI(EREGISTER rt, unsigned __int16 immediate);						//	Load Upper Immediate
+		void SYSCALL(unsigned __int16 code);									//	System Call
+		void BREAK(unsigned __int16 code);										//	Break
+		void LI(EREGISTER rt, unsigned __int32 immediate);						//	Load Immediate
+		void AND(EREGISTER rd, EREGISTER rs, EREGISTER rt);						//	AND
+		void ANDI(EREGISTER rt, EREGISTER rs, unsigned __int16 immediate);		//	AND Immediate
+		void OR(EREGISTER rd, EREGISTER rs, EREGISTER rt);						//	OR
+		void BEQ(EREGISTER rs, EREGISTER rt, signed __int16 offset);			//	Branch on Equal
+		void BNE(EREGISTER rs, EREGISTER rt, signed __int16 offset);			//	Branch on Not Equal
+		void SW(EREGISTER rt, unsigned __int16 offset, EREGISTER base);			//	Store Word
+		void LW(EREGISTER rt, unsigned __int16 offset, EREGISTER base);			//	Load Word
+
+	public:
+		const unsigned __int32* data() const;	//	returns pointer to the assembled code
+		size_t size() const;					//	returns size of the assembled code in bytes
 	};
 
 	/* helper methods */
