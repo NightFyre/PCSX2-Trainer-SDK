@@ -763,6 +763,8 @@ namespace PlayStation2
         static __int64                  GetEEAddr(__int32 offset);          //  transform offset to virtual address. 0x44D648 -> 00007FF6C44D648      
 		static __int64					GetScratchAddr(__int32 offset);		//  transform scratchpad offset to virtual address. 0x1F00 -> 00007FF6C801F00
 		static __int64                  ResolvePtrChain(__int32 base_offset, std::vector<__int32> offsets); //  resolves a pointer chain to a final address
+		static bool 				    WordPatchEE(const __int32& offset, const std::vector<unsigned __int32>& words); //	Patch a section of EE memory with size bytes from the bytes array
+		static bool						WordNopEE(const __int32& offset, const size_t& size);	//	NOP a section of EE memory with size bytes
 		static __int64					FindExecCodeBlock(const DWORD& szDetour);	// Get executable space in EE memory ( finds the first space matching criteria , often not the best way of doing it )
 		static bool 					DumpSectionToFile(const char* filename, const __int64& start_offset, const size_t& size); // Dumps a section of memory to a file
 		static bool 					DumpEEToFile(const char* filename); // Dumps the entire EE memory to a file

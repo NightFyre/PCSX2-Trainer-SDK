@@ -470,6 +470,46 @@ namespace PlayStation2
 
     ///---------------------------------------------------------------------------------------------------
     //	[MEMORY]
+    bool PS2Memory::WordPatchEE(const __int32& offset, const std::vector<unsigned __int32>& words)
+    {
+		if (offset <= 0 || words.empty())
+			return false;
+
+		const __int64 pAddr = GetEEAddr(offset);
+
+		for (size_t i = 0; i < words.size(); i++)
+		{
+            PS2Memory::WriteLong<__int32>(pAddr + (i * 4), words[i]);
+			if (PS2Memory::ReadLong<__int32>(pAddr + (i * 4)) != words[i])
+				return false;
+		}
+
+
+        return true;
+    }
+
+    ///---------------------------------------------------------------------------------------------------
+    //	[MEMORY]
+    bool PS2Memory::WordNopEE(const __int32& offset, const size_t& words)
+    {
+
+        if (offset <= 0 || words == 0)
+            return false;
+
+        const __int64 pAddr = GetEEAddr(offset);
+
+        for (size_t i = 0; i < words; i++)
+        {
+            PS2Memory::WriteLong<__int32>(pAddr + (i * 4), 0);
+            if (PS2Memory::ReadLong<__int32>(pAddr + (i * 4)) != 0)
+                return false;
+        }
+
+        return true;
+    }
+
+    ///---------------------------------------------------------------------------------------------------
+    //	[MEMORY]
 	// Get executable space in EE memory ( finds the first space matching criteria , often not the best way of doing it )
     __int64 PS2Memory::FindExecCodeBlock(const DWORD& szDetour)
     {
