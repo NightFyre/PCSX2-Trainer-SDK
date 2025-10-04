@@ -496,6 +496,53 @@ namespace PlayStation2
         return pBlock;
     }
 
+    ///---------------------------------------------------------------------------------------------------
+    //	[MEMORY]
+    bool PS2Memory::DumpSectionToFile(const char* filename, const __int64& start_offset, const size_t& size)
+    {
+        if (!filename || size == 0)
+            return false;
+
+        std::ofstream file(filename, std::ios::binary);
+        if (!file.is_open())
+            return false;
+
+        constexpr size_t PAGE_SIZE = 4096; // 4 KB at a time
+        std::unique_ptr<char[]> buffer(new (std::nothrow) char[size]);
+        if (!buffer)
+            return false;
+
+        size_t bytesRemaining = size;
+        __int64 currentOffset = start_offset;
+        while (bytesRemaining > 0)
+        {
+            size_t chunkSize = (bytesRemaining < PAGE_SIZE) ? bytesRemaining : PAGE_SIZE;
+
+            if (!ReadProcessMemory(GetCurrentProcess(), (LPCVOID)currentOffset, buffer.get(), chunkSize, nullptr))
+                return false;
+
+            file.write(buffer.get(), chunkSize);
+            if (!file.good())
+                return false;
+
+            currentOffset += chunkSize;
+            bytesRemaining -= chunkSize;
+        }
+
+        return true;
+    }
+
+    ///---------------------------------------------------------------------------------------------------
+    //	[MEMORY]
+    bool PS2Memory::DumpEEToFile(const char* filename)
+    {
+        const __int64& base = GetEEBase();
+        if (!base)
+            return false;
+
+        return DumpSectionToFile(filename, base, PS2MemSize::MainRam);
+    }
+
 #pragma endregion
 
     //----------------------------------------------------------------------------------------------------
