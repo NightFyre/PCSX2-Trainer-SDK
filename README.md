@@ -30,13 +30,23 @@ It modernizes cheat development with memory tools, runtime hooks, and UI overlay
 
 ---
 
-## 📂 Repository Structure
-```
-/include       → Public headers (TrainerSDK.h, Memory.h, etc.)
-/src           → Core implementation
-/examples      → Starter projects to learn from
-/docs          → API references & guides
-```
+### 🧩 Game Module SDKs
+
+The **PCSX2-Trainer-SDK** supports modular extensions through **Game Module SDKs** — standalone repositories designed to integrate game-specific logic, memory maps, and utilities.
+
+Each Game Module SDK includes:
+
+* Predefined headers and helper classes for trainer integration
+* Example source files for implementing custom features
+* Lightweight documentation for setup and usage
+
+📦 **Official Game Module SDK Repository:**
+➡️ [PCSX2-Trainer-Modules](https://github.com/NightFyre/PCSX2-Trainer-Modules)
+
+Developers can clone or include any module directly within their project’s `/modules/` directory.
+To contribute new modules, follow the guidelines in the **Modules Repository**.
+
+---
 
 ## 🤝 Contributing
 Contributions are welcome!  
@@ -65,3 +75,13 @@ For educational and single-player purposes only. Please use responsibly.
 ### Disclaimer
 1. *This framework is intended for educational and single-player use.*  
 2. *Use cheats responsibly and respect the terms of use of the games you are modifying.*
+
+---
+
+## 📂 Repository Structure
+```
+/include       → Public headers (TrainerSDK.h, Memory.h, etc.)
+/src           → Core implementation
+/examples      → Starter projects to learn from
+/docs          → API references & guides
+```
